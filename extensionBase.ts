@@ -552,7 +552,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
   await VSCodeContext.set('listAutomaticKeyboardNavigation', false);
 
   await toggleExtension(configuration.disableExtension, compositionState);
-  Logger.debug((performance.now() - start).toString());
+  Logger.debug('My reinit time (ms): ' + (performance.now() - start).toString());
   Logger.debug('Finish.');
 }
 

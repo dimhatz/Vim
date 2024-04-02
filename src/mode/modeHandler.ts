@@ -106,8 +106,12 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
     if (this.vimState.currentMode !== mode) {
       await this.vimState.setCurrentMode(mode);
     }
-    void adjustSubscriptions(this._currentMode, mode);
+    const origMode = this._currentMode;
     this._currentMode = mode;
+    if (origMode !== mode && origMode === Mode.Insert) {
+      this.syncCursors();
+    }
+    await adjustSubscriptions(origMode, mode);
   }
 
   public static async create(
