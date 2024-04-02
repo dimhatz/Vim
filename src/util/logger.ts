@@ -4,6 +4,9 @@ export class Logger {
   private static output: LogOutputChannel;
 
   public static init(): void {
+    if (Logger.output != null) {
+      return;
+    }
     Logger.output = window.createOutputChannel('Vim', { log: true });
   }
 

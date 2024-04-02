@@ -46,6 +46,7 @@ import { RecordedState } from './../state/recordedState';
 import { VimState } from './../state/vimState';
 import { TextEditor } from './../textEditor';
 import { Mode, VSCodeVimCursorType, getCursorStyle, isStatusBarMode, isVisualMode } from './mode';
+import { adjustSubscriptions } from './../../noInsert';
 
 interface IModeHandlerMap {
   get(editorId: Uri): ModeHandler | undefined;
@@ -105,6 +106,7 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
     if (this.vimState.currentMode !== mode) {
       await this.vimState.setCurrentMode(mode);
     }
+    void adjustSubscriptions(this._currentMode, mode);
     this._currentMode = mode;
   }
 

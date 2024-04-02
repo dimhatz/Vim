@@ -17,6 +17,7 @@ import { Logger } from './src/util/logger';
 import { SpecialKeys } from './src/util/specialKeys';
 import { VSCodeContext } from './src/util/vscodeContext';
 import { exCommandParser } from './src/vimscript/exCommandParser';
+import { getPreservableId, setPreserveFlag } from './noInsert';
 
 let extensionContext: vscode.ExtensionContext;
 let previousActiveEditorUri: vscode.Uri | undefined;
@@ -94,6 +95,7 @@ export async function loadConfiguration() {
  * The extension's entry point
  */
 export async function activate(context: vscode.ExtensionContext, handleLocal: boolean = true) {
+  const start = performance.now();
   ExCommandLine.parser = exCommandParser;
 
   Logger.init();
@@ -261,6 +263,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
     true,
   );
 
+  // fires
   registerEventListener(
     context,
     vscode.window.onDidChangeTextEditorSelection,
@@ -377,6 +380,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
     'replacePreviousChar',
     async (args: { replaceCharCnt: number; text: string }) => {
       taskQueue.enqueueTask(async () => {
+        Logger.debug('replacePreviousChar');
         const mh = await getAndUpdateModeHandler();
         if (mh) {
           if (compositionState.isInComposition) {
@@ -406,12 +410,14 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
 
   overrideCommand(context, 'compositionStart', async () => {
     taskQueue.enqueueTask(async () => {
+      Logger.debug('compositionStart');
       compositionState.isInComposition = true;
     });
   });
 
   overrideCommand(context, 'compositionEnd', async () => {
     taskQueue.enqueueTask(async () => {
+      Logger.debug('compositionEnd');
       const mh = await getAndUpdateModeHandler();
       if (mh) {
         if (compositionState.insertedText) {
@@ -433,6 +439,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
 
   // Register extension commands
   registerCommand(context, 'vim.showQuickpickCmdLine', async () => {
+    Logger.debug('vim.showQuickpickCmdLine');
     const mh = await getAndUpdateModeHandler();
     if (mh) {
       const cmd = await vscode.window.showInputBox({
@@ -450,6 +457,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
 
   registerCommand(context, 'vim.remap', async (args: ICodeKeybinding) => {
     taskQueue.enqueueTask(async () => {
+      Logger.debug('vim.remap');
       const mh = await getAndUpdateModeHandler();
       if (mh === undefined) {
         return;
@@ -485,6 +493,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
   });
 
   registerCommand(context, 'toggleVim', async () => {
+    Logger.debug('toggleVim');
     configuration.disableExtension = !configuration.disableExtension;
     void toggleExtension(configuration.disableExtension, compositionState);
   });
@@ -503,9 +512,14 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
             await mh.handleKeyEvent(`${boundKey.key}`);
           }
         };
-    registerCommand(context, boundKey.command, async () => {
+
+    const enqueuedTask = async () => {
       taskQueue.enqueueTask(command);
-    });
+    };
+    if (boundKey.key === '<Esc>') {
+      setPreserveFlag(enqueuedTask, boundKey.key);
+    }
+    registerCommand(context, boundKey.command, enqueuedTask);
   }
 
   {
@@ -538,7 +552,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
   await VSCodeContext.set('listAutomaticKeyboardNavigation', false);
 
   await toggleExtension(configuration.disableExtension, compositionState);
-
+  Logger.debug((performance.now() - start).toString());
   Logger.debug('Finish.');
 }
 
@@ -594,13 +608,27 @@ export function registerCommand(
   callback: (...args: any[]) => any,
   requiresActiveEditor: boolean = true,
 ) {
-  const disposable = vscode.commands.registerCommand(command, async (args) => {
+  const finalCb = async (args: any) => {
     if (requiresActiveEditor && !vscode.window.activeTextEditor) {
       return;
     }
 
     callback(args);
-  });
+  };
+
+  const id = getPreservableId(callback);
+  if (id) {
+    if (context.subscriptions.some((v) => getPreservableId(v) === id)) {
+      return;
+    } else {
+      const preservedDisposable = vscode.commands.registerCommand(command, finalCb);
+      setPreserveFlag(preservedDisposable, id);
+      context.subscriptions.push(preservedDisposable);
+      return;
+    }
+  }
+
+  const disposable = vscode.commands.registerCommand(command, finalCb);
   context.subscriptions.push(disposable);
 }
 
@@ -622,6 +650,10 @@ export function registerEventListener<T>(
 
     listener(e);
   });
+  const id = getPreservableId(listener);
+  if (typeof id === 'string') {
+    setPreserveFlag(disposable, id);
+  }
   context.subscriptions.push(disposable);
 }
 
