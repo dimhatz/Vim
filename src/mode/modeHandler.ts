@@ -46,6 +46,8 @@ import { RecordedState } from './../state/recordedState';
 import { VimState } from './../state/vimState';
 import { TextEditor } from './../textEditor';
 import { Mode, VSCodeVimCursorType, getCursorStyle, isStatusBarMode, isVisualMode } from './mode';
+import { adjustSubscriptions } from './../../noInsert';
+import { taskQueue } from './../../src/taskQueue';
 
 interface IModeHandlerMap {
   get(editorId: Uri): ModeHandler | undefined;
@@ -105,7 +107,21 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
     if (this.vimState.currentMode !== mode) {
       await this.vimState.setCurrentMode(mode);
     }
+    const origMode = this._currentMode;
+
     this._currentMode = mode;
+
+    // if (origMode !== mode && origMode === Mode.Insert) {
+    //   this.syncCursors();
+    //   // await this.updateView({ drawSelection: false, revealRange: false });
+    // } else if (origMode !== mode && mode === Mode.Insert) {
+    //   this.syncCursors();
+    //   // await this.updateView({ drawSelection: false, revealRange: false });
+    // } else {
+    //   //
+    // }
+
+    // await adjustSubscriptions(origMode, mode);
   }
 
   public static async create(
@@ -408,6 +424,51 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
   }
 
   public async handleKeyEvent(key: string): Promise<void> {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    // await sleep(300);
+
+    // this.syncCursors(); // works, but runs at every keypress
+    if (key === '<Esc>' && this.vimState.currentMode === Mode.Insert) {
+      // this.syncCursors(); // causes jumps
+      // await this.updateView({ drawSelection: false, revealRange: false }); // does not fix something
+
+      // const editor = this.vimState.editor;
+      // const cursorPos = editor.selection.active;
+      // // const selection = new vscode.Selection(cursorPos, cursorPos);
+
+      // this.vimState.cursors = [new Cursor(cursorPos, cursorPos)];
+      // this.vimState.desiredColumn = cursorPos.character;
+
+      // taskQueue.enqueueTask(() => adjustSubscriptions(Mode.Insert, Mode.Normal));
+      // taskQueue.enqueueTask(() =>
+      //   this.handleSelectionChange({
+      //     kind: vscode.TextEditorSelectionChangeKind.Mouse,
+      //     textEditor: editor,
+      //     selections: [new vscode.Selection(cursorPos, cursorPos)],
+      //   }),
+      // );
+
+      // await this.handleSelectionChange({
+      //   kind: vscode.TextEditorSelectionChangeKind.Keyboard,
+      //   textEditor: editor,
+      //   selections: [new vscode.Selection(cursorPos, cursorPos)],
+      // });
+
+      // setTimeout(() => {
+      //   taskQueue.enqueueTask(() => adjustSubscriptions(Mode.Normal, Mode.Insert));
+      // }, 100);
+
+      //  taskQueue.enqueueTask(() => adjustSubscriptions(Mode.Insert, Mode.Normal));
+      this.selectionsChanged.ourSelections.splice(0, Infinity);
+      this.syncCursors();
+      await adjustSubscriptions(Mode.Insert, Mode.Normal);
+
+      // const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      // await sleep(300);
+      // editor.selection = selection;
+    }
+
+    // await adjustSubscriptions(origMode, mode);
     if (this.remapState.forceStopRecursiveRemapping) {
       return;
     }
@@ -592,6 +653,17 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
         // be no need to call all of it.
         await this.updateView({ drawSelection: false, revealRange: false });
       }
+    }
+
+    if (handledAsAction && ['i', 'a', 'o', 'O', 'c', 'C'].includes(key)) {
+      // todo: make sure its final action, not some intermediate operator
+      // setTimeout(() => {
+      //   taskQueue.enqueueTask(() => adjustSubscriptions(Mode.Normal, Mode.Insert));
+      // }, 100);
+
+      await adjustSubscriptions(Mode.Normal, Mode.Insert);
+      // this.syncCursors();
+      // await this.updateView({ drawSelection: false, revealRange: false });
     }
   }
 

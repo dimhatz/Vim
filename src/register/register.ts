@@ -336,6 +336,8 @@ export class Register {
   }
 
   public static loadFromDisk(supportNode: boolean): void {
+    Register.registers = new Map();
+    return;
     if (supportNode) {
       Register.registers = new Map();
       void import('path').then((path) => {

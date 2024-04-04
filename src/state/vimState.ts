@@ -17,6 +17,7 @@ import { ExCommandLine, SearchCommandLine } from '../cmd_line/commandLine';
 import { ModeData } from '../mode/modeData';
 import { SearchDirection } from '../vimscript/pattern';
 import { globalState } from './globalState';
+import { adjustSubscriptions } from './../../noInsert';
 
 interface IInputMethodSwitcher {
   switchInputMethod(prevMode: Mode, newMode: Mode): Promise<void>;
@@ -249,7 +250,8 @@ export class VimState implements vscode.Disposable {
       // TODO: remove this once we're sure this is no longer an issue (#6500, #6464)
       throw new Error('Tried setting currentMode to undefined');
     }
-
+    // const currMode = this.currentMode;
+    // await adjustSubscriptions(currMode, mode);
     await this.setModeData(
       mode === Mode.Replace
         ? {

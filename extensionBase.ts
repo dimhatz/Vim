@@ -17,6 +17,7 @@ import { Logger } from './src/util/logger';
 import { SpecialKeys } from './src/util/specialKeys';
 import { VSCodeContext } from './src/util/vscodeContext';
 import { exCommandParser } from './src/vimscript/exCommandParser';
+import { getMyId, isPreservable, setMyId, setPreservable } from './noInsert';
 
 let extensionContext: vscode.ExtensionContext;
 let previousActiveEditorUri: vscode.Uri | undefined;
@@ -37,6 +38,8 @@ export async function getAndUpdateModeHandler(
 
   const [curHandler, isNew] = await ModeHandlerMap.getOrCreate(activeTextEditor);
   if (isNew) {
+    setMyId(curHandler, 'MyModeHandler_' + curHandler.vimState.documentUri?.toString());
+    setPreservable(curHandler);
     extensionContext.subscriptions.push(curHandler);
   }
 
@@ -90,6 +93,7 @@ export async function loadConfiguration() {
   }
 }
 
+let firstActivation = true;
 /**
  * The extension's entry point
  */
@@ -104,7 +108,11 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
   Logger.debug('Start');
 
   extensionContext = context;
-  extensionContext.subscriptions.push(StatusBar);
+  if (firstActivation) {
+    setMyId(StatusBar, 'StatusBar');
+    setPreservable(StatusBar);
+    extensionContext.subscriptions.push(StatusBar);
+  }
 
   // Load state
   Register.loadFromDisk(handleLocal);
@@ -503,9 +511,17 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
             await mh.handleKeyEvent(`${boundKey.key}`);
           }
         };
-    registerCommand(context, boundKey.command, async () => {
-      taskQueue.enqueueTask(command);
-    });
+
+    const preserve = boundKey.key === '<Esc>' ? true : false;
+    registerCommand(
+      context,
+      boundKey.command,
+      async () => {
+        taskQueue.enqueueTask(command);
+      },
+      true,
+      preserve,
+    );
   }
 
   {
@@ -540,6 +556,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
   await toggleExtension(configuration.disableExtension, compositionState);
 
   Logger.debug('Finish.');
+  firstActivation = false;
 }
 
 /**
@@ -557,7 +574,7 @@ async function toggleExtension(isDisabled: boolean, compositionState: Compositio
       compositionState.reset();
       ModeHandlerMap.clear();
     } else {
-      await mh.handleKeyEvent(SpecialKeys.ExtensionEnable);
+      // await mh.handleKeyEvent(SpecialKeys.ExtensionEnable);
     }
   }
 }
@@ -566,7 +583,12 @@ function overrideCommand(
   context: vscode.ExtensionContext,
   command: string,
   callback: (...args: any[]) => any,
+  preserve = false,
 ) {
+  if (context.subscriptions.some((sub) => isPreservable(sub) && getMyId(sub) === command)) {
+    // already registered
+    return;
+  }
   const disposable = vscode.commands.registerCommand(command, async (args) => {
     if (configuration.disableExtension) {
       return vscode.commands.executeCommand('default:' + command, args);
@@ -585,6 +607,10 @@ function overrideCommand(
 
     return callback(args) as vscode.Disposable;
   });
+  if (preserve) {
+    setPreservable(disposable);
+  }
+  setMyId(disposable, command);
   context.subscriptions.push(disposable);
 }
 
@@ -593,14 +619,25 @@ export function registerCommand(
   command: string,
   callback: (...args: any[]) => any,
   requiresActiveEditor: boolean = true,
+  preserve = false,
 ) {
-  const disposable = vscode.commands.registerCommand(command, async (args) => {
+  if (context.subscriptions.some((sub) => isPreservable(sub) && getMyId(sub) === command)) {
+    // already registered
+    return;
+  }
+
+  const finalCb = async (args: any) => {
     if (requiresActiveEditor && !vscode.window.activeTextEditor) {
       return;
     }
-
     callback(args);
-  });
+  };
+
+  const disposable = vscode.commands.registerCommand(command, finalCb);
+  if (preserve) {
+    setPreservable(disposable);
+  }
+  setMyId(disposable, command);
   context.subscriptions.push(disposable);
 }
 
@@ -610,7 +647,12 @@ export function registerEventListener<T>(
   listener: (e: T) => void,
   exitOnExtensionDisable = true,
   exitOnTests = false,
+  preserve = false,
 ) {
+  if (context.subscriptions.some((sub) => isPreservable(sub) && getMyId(sub) === event.name)) {
+    // already registered
+    return;
+  }
   const disposable = event(async (e) => {
     if (exitOnExtensionDisable && configuration.disableExtension) {
       return;
@@ -622,6 +664,11 @@ export function registerEventListener<T>(
 
     listener(e);
   });
+
+  if (preserve) {
+    setPreservable(disposable);
+  }
+  setMyId(disposable, event.name);
   context.subscriptions.push(disposable);
 }
 
