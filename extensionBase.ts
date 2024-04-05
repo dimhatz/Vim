@@ -220,6 +220,12 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
         }
 
         if (shouldDelete) {
+          // On an unmodified doc, enter insert mode and middle-click to close the tab.
+          // We need to ensure that mode resets to normal, listeners are reattached.
+          const mh = ModeHandlerMap.get(uri);
+          await mh?.handleKeyEvent('<Esc>');
+          await mh?.setCurrentMode(Mode.Normal);
+
           ModeHandlerMap.delete(uri);
         }
       }
