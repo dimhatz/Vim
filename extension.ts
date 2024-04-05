@@ -27,10 +27,12 @@ import { Register } from './src/register/register';
 import { vimrc } from './src/configuration/vimrc';
 import * as path from 'path';
 import { Logger } from './src/util/logger';
+import { myGlob } from './noInsert';
 
 export { getAndUpdateModeHandler } from './extensionBase';
 
 export async function activate(context: vscode.ExtensionContext) {
+  myGlob.context = context;
   // Set the storage path to be used by history files
   Globals.extensionStoragePath = context.globalStorageUri.fsPath;
 

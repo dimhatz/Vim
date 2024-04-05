@@ -17,6 +17,20 @@ import { Logger } from './src/util/logger';
 import { SpecialKeys } from './src/util/specialKeys';
 import { VSCodeContext } from './src/util/vscodeContext';
 import { exCommandParser } from './src/vimscript/exCommandParser';
+import {
+  getMyId,
+  myGlob,
+  overrideCompositionEndCmd,
+  overrideCompositionStartCmd,
+  overrideReplacePreviousCharCmd,
+  overrideTypeCmd,
+  registerDidChangeTextEditorSelectionEv,
+  registerToggleVimCmd,
+  setMyId,
+  warnIfRegistered,
+} from './noInsert';
+
+myGlob.ModeHandlerMap = ModeHandlerMap;
 
 let extensionContext: vscode.ExtensionContext;
 let previousActiveEditorUri: vscode.Uri | undefined;
@@ -37,6 +51,7 @@ export async function getAndUpdateModeHandler(
 
   const [curHandler, isNew] = await ModeHandlerMap.getOrCreate(activeTextEditor);
   if (isNew) {
+    setMyId(curHandler, 'MyModeHandler_' + curHandler.vimState.documentUri?.toString());
     extensionContext.subscriptions.push(curHandler);
   }
 
@@ -67,6 +82,8 @@ export async function getAndUpdateModeHandler(
 
   return curHandler;
 }
+
+myGlob.getAndUpdateModeHandler = getAndUpdateModeHandler;
 
 /**
  * Loads and validates the user's configuration
@@ -104,6 +121,8 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
   Logger.debug('Start');
 
   extensionContext = context;
+
+  setMyId(StatusBar, 'StatusBar');
   extensionContext.subscriptions.push(StatusBar);
 
   // Load state
@@ -201,6 +220,12 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
         }
 
         if (shouldDelete) {
+          // On an unmodified doc, enter insert mode and middle-click to close the tab.
+          // We need to ensure that mode resets to normal, listeners are reattached.
+          const mh = ModeHandlerMap.get(uri);
+          await mh?.handleKeyEvent('<Esc>');
+          await mh?.setCurrentMode(Mode.Normal);
+
           ModeHandlerMap.delete(uri);
         }
       }
@@ -229,6 +254,18 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
       //
       // This also applies to files that are merely closed, which allows you to jump back to that file similarly
       // once a new file is opened.
+      if (
+        activeTextEditor &&
+        mhPrevious &&
+        // do not trigger when switching to a side-by-side tab with the same document
+        mhPrevious.vimState.document !== activeTextEditor.document &&
+        mhPrevious.currentMode === Mode.Insert
+      ) {
+        // Ensure <esc> is sent to editor that is being switched away from.
+        // Also force update its mode, otherwise it thinks it is in insert.
+        await mhPrevious.handleKeyEvent('<Esc>');
+        await mhPrevious.setCurrentMode(Mode.Normal);
+      }
       lastClosedModeHandler = mhPrevious || lastClosedModeHandler;
 
       const oldFileRegister = (await Register.get('%'))?.text;
@@ -261,75 +298,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
     true,
   );
 
-  registerEventListener(
-    context,
-    vscode.window.onDidChangeTextEditorSelection,
-    async (e: vscode.TextEditorSelectionChangeEvent) => {
-      if (e.textEditor.document.uri.scheme === 'output') {
-        // Without this, we can an infinite logging loop
-        return;
-      }
-      if (
-        vscode.window.activeTextEditor === undefined ||
-        e.textEditor.document !== vscode.window.activeTextEditor.document
-      ) {
-        // We don't care if user selection changed in a paneled window (e.g debug console/terminal)
-        return;
-      }
-
-      const mh = ModeHandlerMap.get(vscode.window.activeTextEditor.document.uri);
-      if (mh === undefined) {
-        // We don't care if there is no active editor
-        return;
-      }
-
-      if (e.kind !== vscode.TextEditorSelectionChangeKind.Mouse) {
-        const selectionsHash = e.selections.reduce(
-          (hash, s) =>
-            hash +
-            `[${s.anchor.line}, ${s.anchor.character}; ${s.active.line}, ${s.active.character}]`,
-          '',
-        );
-        const idx = mh.selectionsChanged.ourSelections.indexOf(selectionsHash);
-        if (idx > -1) {
-          mh.selectionsChanged.ourSelections.splice(idx, 1);
-          Logger.trace(
-            `Ignoring selection: ${selectionsHash}. ${mh.selectionsChanged.ourSelections.length} left`,
-          );
-          return;
-        } else if (mh.selectionsChanged.ignoreIntermediateSelections) {
-          Logger.trace(`Ignoring intermediate selection change: ${selectionsHash}`);
-          return;
-        } else if (mh.selectionsChanged.ourSelections.length > 0) {
-          // Some intermediate selection must have slipped in after setting the
-          // 'ignoreIntermediateSelections' to false. Which means we didn't count
-          // for it yet, but since we have selections to be ignored then we probably
-          // wanted this one to be ignored as well.
-          Logger.warn(`Ignoring slipped selection: ${selectionsHash}`);
-          return;
-        }
-      }
-
-      // We may receive changes from other panels when, having selections in them containing the same file
-      // and changing text before the selection in current panel.
-      if (e.textEditor !== mh.vimState.editor) {
-        return;
-      }
-
-      if (mh.focusChanged) {
-        mh.focusChanged = false;
-        return;
-      }
-
-      if (mh.currentMode === Mode.EasyMotionMode) {
-        return;
-      }
-
-      taskQueue.enqueueTask(() => mh.handleSelectionChange(e));
-    },
-    true,
-    false,
-  );
+  registerDidChangeTextEditorSelectionEv();
 
   registerEventListener(
     context,
@@ -353,83 +322,13 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
   );
 
   const compositionState = new CompositionState();
+  myGlob.compositionState = compositionState;
 
   // Override VSCode commands
-  overrideCommand(context, 'type', async (args: { text: string }) => {
-    taskQueue.enqueueTask(async () => {
-      const mh = await getAndUpdateModeHandler();
-      if (mh) {
-        if (compositionState.isInComposition) {
-          compositionState.composingText += args.text;
-          if (mh.vimState.currentMode === Mode.Insert) {
-            compositionState.insertedText = true;
-            void vscode.commands.executeCommand('default:type', { text: args.text });
-          }
-        } else {
-          await mh.handleKeyEvent(args.text);
-        }
-      }
-    });
-  });
-
-  overrideCommand(
-    context,
-    'replacePreviousChar',
-    async (args: { replaceCharCnt: number; text: string }) => {
-      taskQueue.enqueueTask(async () => {
-        const mh = await getAndUpdateModeHandler();
-        if (mh) {
-          if (compositionState.isInComposition) {
-            compositionState.composingText =
-              compositionState.composingText.substr(
-                0,
-                compositionState.composingText.length - args.replaceCharCnt,
-              ) + args.text;
-          }
-          if (compositionState.insertedText) {
-            await vscode.commands.executeCommand('default:replacePreviousChar', {
-              text: args.text,
-              replaceCharCnt: args.replaceCharCnt,
-            });
-            mh.vimState.cursorStopPosition = mh.vimState.editor.selection.start;
-            mh.vimState.cursorStartPosition = mh.vimState.editor.selection.start;
-          }
-        } else {
-          await vscode.commands.executeCommand('default:replacePreviousChar', {
-            text: args.text,
-            replaceCharCnt: args.replaceCharCnt,
-          });
-        }
-      });
-    },
-  );
-
-  overrideCommand(context, 'compositionStart', async () => {
-    taskQueue.enqueueTask(async () => {
-      compositionState.isInComposition = true;
-    });
-  });
-
-  overrideCommand(context, 'compositionEnd', async () => {
-    taskQueue.enqueueTask(async () => {
-      const mh = await getAndUpdateModeHandler();
-      if (mh) {
-        if (compositionState.insertedText) {
-          mh.selectionsChanged.ignoreIntermediateSelections = true;
-          await vscode.commands.executeCommand('default:replacePreviousChar', {
-            text: '',
-            replaceCharCnt: compositionState.composingText.length,
-          });
-          mh.vimState.cursorStopPosition = mh.vimState.editor.selection.active;
-          mh.vimState.cursorStartPosition = mh.vimState.editor.selection.active;
-          mh.selectionsChanged.ignoreIntermediateSelections = false;
-        }
-        const text = compositionState.composingText;
-        await mh.handleMultipleKeyEvents(text.split(''));
-      }
-      compositionState.reset();
-    });
-  });
+  overrideTypeCmd();
+  overrideReplacePreviousCharCmd();
+  overrideCompositionStartCmd();
+  overrideCompositionEndCmd();
 
   // Register extension commands
   registerCommand(context, 'vim.showQuickpickCmdLine', async () => {
@@ -484,10 +383,7 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
     });
   });
 
-  registerCommand(context, 'toggleVim', async () => {
-    configuration.disableExtension = !configuration.disableExtension;
-    void toggleExtension(configuration.disableExtension, compositionState);
-  });
+  registerToggleVimCmd();
 
   for (const boundKey of configuration.boundKeyCombinations) {
     const command = ['<Esc>', '<C-c>'].includes(boundKey.key)
@@ -562,11 +458,14 @@ async function toggleExtension(isDisabled: boolean, compositionState: Compositio
   }
 }
 
+myGlob.toggleExtension = toggleExtension;
+
 function overrideCommand(
   context: vscode.ExtensionContext,
   command: string,
   callback: (...args: any[]) => any,
 ) {
+  warnIfRegistered(command);
   const disposable = vscode.commands.registerCommand(command, async (args) => {
     if (configuration.disableExtension) {
       return vscode.commands.executeCommand('default:' + command, args);
@@ -585,8 +484,11 @@ function overrideCommand(
 
     return callback(args) as vscode.Disposable;
   });
+  setMyId(disposable, command);
   context.subscriptions.push(disposable);
 }
+
+myGlob.overrideCommand = overrideCommand;
 
 export function registerCommand(
   context: vscode.ExtensionContext,
@@ -594,6 +496,7 @@ export function registerCommand(
   callback: (...args: any[]) => any,
   requiresActiveEditor: boolean = true,
 ) {
+  warnIfRegistered(command);
   const disposable = vscode.commands.registerCommand(command, async (args) => {
     if (requiresActiveEditor && !vscode.window.activeTextEditor) {
       return;
@@ -601,8 +504,11 @@ export function registerCommand(
 
     callback(args);
   });
+  setMyId(disposable, command);
   context.subscriptions.push(disposable);
 }
+
+myGlob.registerCommand = registerCommand;
 
 export function registerEventListener<T>(
   context: vscode.ExtensionContext,
@@ -611,6 +517,7 @@ export function registerEventListener<T>(
   exitOnExtensionDisable = true,
   exitOnTests = false,
 ) {
+  warnIfRegistered(event.name);
   const disposable = event(async (e) => {
     if (exitOnExtensionDisable && configuration.disableExtension) {
       return;
@@ -622,8 +529,12 @@ export function registerEventListener<T>(
 
     listener(e);
   });
+
+  setMyId(disposable, event.name);
   context.subscriptions.push(disposable);
 }
+
+myGlob.registerEventListener = registerEventListener;
 
 /**
  * @returns true if there was a remap being executed to stop
