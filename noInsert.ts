@@ -41,6 +41,7 @@ export async function adjustSubscriptions(how: 'add' | 'remove') {
   // modehandlers are not constant, but depend on number of open tabs
   const ignoreMh = subscriptions.filter((sub) => getMyId(sub).startsWith('MyModeHandler_')).length;
   if (how === 'add') {
+    Logger.debug('My: addings subs');
     if (subscriptions.length - ignoreMh !== 72) {
       void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 72`);
     }
@@ -57,6 +58,7 @@ export async function adjustSubscriptions(how: 'add' | 'remove') {
   }
 
   // removing
+  Logger.debug('My: removing subs');
   if (subscriptions.length - ignoreMh !== 78) {
     void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 78`);
   }
