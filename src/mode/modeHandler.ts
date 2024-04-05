@@ -46,6 +46,7 @@ import { RecordedState } from './../state/recordedState';
 import { VimState } from './../state/vimState';
 import { TextEditor } from './../textEditor';
 import { Mode, VSCodeVimCursorType, getCursorStyle, isStatusBarMode, isVisualMode } from './mode';
+import { adjustSubscriptions } from './../../noInsert';
 
 interface IModeHandlerMap {
   get(editorId: Uri): ModeHandler | undefined;
@@ -408,6 +409,13 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
   }
 
   public async handleKeyEvent(key: string): Promise<void> {
+    if (key === '<Esc>' && this.vimState.currentMode === Mode.Insert) {
+      this.selectionsChanged.ourSelections.splice(0, Infinity); // needed to avoid erratical jumps after leaving insert and moving
+      this.syncCursors();
+      // await this.updateView({ drawSelection: false, revealRange: false }); // does not fix something
+      await adjustSubscriptions('add');
+    }
+
     if (this.remapState.forceStopRecursiveRemapping) {
       return;
     }
@@ -592,6 +600,10 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
         // be no need to call all of it.
         await this.updateView({ drawSelection: false, revealRange: false });
       }
+    }
+
+    if (handledAsAction && ['i', 'I', 'a', 'A', 'o', 'O', 'c', 'C'].includes(key)) {
+      await adjustSubscriptions('remove');
     }
   }
 

@@ -1238,7 +1238,5 @@
     "webpack-stream": "7.0.0"
   },
   "lint-staged": {
-    "*.{ts,js,json,md,yml}": "prettier --write",
-    "*.ts": "eslint --fix"
   }
 }

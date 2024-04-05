@@ -4,7 +4,7 @@ import { ModeHandler } from './modeHandler';
 /**
  * Stores one ModeHandler (and therefore VimState) per TextDocument.
  */
-class ModeHandlerMapImpl {
+export class ModeHandlerMapImpl {
   private modeHandlerMap = new Map<Uri, ModeHandler>();
 
   public async getOrCreate(editor: TextEditor): Promise<[ModeHandler, boolean]> {
