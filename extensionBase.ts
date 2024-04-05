@@ -248,6 +248,12 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
       //
       // This also applies to files that are merely closed, which allows you to jump back to that file similarly
       // once a new file is opened.
+      if (activeTextEditor && mhPrevious && mhPrevious.currentMode === Mode.Insert) {
+        // Ensure <esc> is sent to editor that is being switched away from.
+        // Also force update its mode, otherwise it thinks it is in insert.
+        await mhPrevious.handleKeyEvent('<Esc>');
+        await mhPrevious.setCurrentMode(Mode.Normal);
+      }
       lastClosedModeHandler = mhPrevious || lastClosedModeHandler;
 
       const oldFileRegister = (await Register.get('%'))?.text;

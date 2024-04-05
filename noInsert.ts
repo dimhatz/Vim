@@ -38,9 +38,11 @@ const subsToRemove = [
 
 export async function adjustSubscriptions(how: 'add' | 'remove') {
   const subscriptions = myGlob.context.subscriptions;
+  // modehandlers are not constant, but depend on number of open tabs
+  const ignoreMh = subscriptions.filter((sub) => getMyId(sub).startsWith('MyModeHandler_')).length;
   if (how === 'add') {
-    if (subscriptions.length !== 73) {
-      void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 73`);
+    if (subscriptions.length - ignoreMh !== 72) {
+      void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 72`);
     }
     registerDidChangeTextEditorSelectionEv();
     overrideTypeCmd();
@@ -48,15 +50,15 @@ export async function adjustSubscriptions(how: 'add' | 'remove') {
     overrideCompositionStartCmd();
     overrideCompositionEndCmd();
     registerToggleVimCmd();
-    if (subscriptions.length !== 79) {
-      void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 79`);
+    if (subscriptions.length - ignoreMh !== 78) {
+      void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 78`);
     }
     return;
   }
 
   // removing
-  if (subscriptions.length !== 79) {
-    void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 79`);
+  if (subscriptions.length - ignoreMh !== 78) {
+    void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 78`);
   }
   const indexesToRemove: number[] = [];
   for (const [i, sub] of subscriptions.entries()) {
@@ -69,8 +71,8 @@ export async function adjustSubscriptions(how: 'add' | 'remove') {
     subscriptions[index].dispose();
     subscriptions.splice(index, 1);
   }
-  if (subscriptions.length !== 73) {
-    void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 73`);
+  if (subscriptions.length - ignoreMh !== 72) {
+    void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 72`);
   }
 }
 
