@@ -44,6 +44,8 @@ export async function adjustSubscriptions(how: 'add' | 'remove') {
     Logger.debug('My: addings subs');
     if (subscriptions.length - ignoreMh !== 72) {
       void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 72`);
+      // do not attempt to add more listeners for the same events, `overrideTypeCmd` will throw, which will affect the calling function
+      return;
     }
     registerDidChangeTextEditorSelectionEv();
     overrideTypeCmd();

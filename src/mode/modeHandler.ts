@@ -603,9 +603,10 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
     }
 
     if (
-      handledAsAction &&
-      this.currentMode === Mode.Insert &&
-      ['i', 'I', 'a', 'A', 'o', 'O', 'c', 'C', 'S'].includes(key)
+      // if we reached this point and are in insert, better be sure to remove subs
+      this.currentMode === Mode.Insert
+      // handledAsAction &&
+      // ['i', 'I', 'a', 'A', 'o', 'O', 'c', 'C', 'S'].includes(key)
     ) {
       await adjustSubscriptions('remove');
     }
