@@ -3,6 +3,7 @@ import { Globals } from '../globals';
 import { RecordedState } from './../state/recordedState';
 import { VimState } from './../state/vimState';
 import { Clipboard } from './../util/clipboard';
+import { Logger } from './../../src/util/logger';
 
 /**
  * This is included in the register file.
@@ -339,8 +340,8 @@ export class Register {
     if (supportNode) {
       Register.registers = new Map();
       void import('path').then((path) => {
-        void readFileAsync(path.join(Globals.extensionStoragePath, '.registers'), 'utf8').then(
-          (savedRegisters) => {
+        void readFileAsync(path.join(Globals.extensionStoragePath, '.registers'), 'utf8')
+          .then((savedRegisters) => {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             const parsed = JSON.parse(savedRegisters);
             // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -348,8 +349,9 @@ export class Register {
               // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
               Register.registers = new Map(parsed.registers);
             }
-          },
-        );
+          })
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          .catch((e) => Logger.error(`My: config for registers not found. ${e?.toString()}`));
       });
     } else {
       Register.registers = new Map();

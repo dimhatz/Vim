@@ -604,8 +604,9 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
 
     if (
       // if we reached this point and are in insert, better be sure to remove subs
+      // `handledAsAction` is needed to ensure a *rapid* pressing of 'ce' does not trigger removal twice.
+      handledAsAction &&
       this.currentMode === Mode.Insert
-      // handledAsAction &&
       // ['i', 'I', 'a', 'A', 'o', 'O', 'c', 'C', 'S'].includes(key)
     ) {
       await adjustSubscriptions('remove');

@@ -42,8 +42,16 @@ export async function adjustSubscriptions(how: 'add' | 'remove') {
   const ignoreMh = subscriptions.filter((sub) => getMyId(sub).startsWith('MyModeHandler_')).length;
   if (how === 'add') {
     Logger.debug('My: addings subs');
+    for (const subId of subsToRemove) {
+      if (myGlob.context.subscriptions.some((sub) => subId === getMyId(sub))) {
+        const message = `My add: sub '${subId}' already exists`;
+        Logger.error(message);
+        void vscode.window.showErrorMessage(message);
+        return;
+      }
+    }
     if (subscriptions.length - ignoreMh !== 72) {
-      void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 72`);
+      void vscode.window.showErrorMessage(`My add: subs are ${subscriptions.length}, not 72`);
       // do not attempt to add more listeners for the same events, `overrideTypeCmd` will throw, which will affect the calling function
       return;
     }
@@ -54,15 +62,22 @@ export async function adjustSubscriptions(how: 'add' | 'remove') {
     overrideCompositionEndCmd();
     registerToggleVimCmd();
     if (subscriptions.length - ignoreMh !== 78) {
-      void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 78`);
+      void vscode.window.showErrorMessage(`My remove: subs are ${subscriptions.length}, not 78`);
     }
     return;
   }
 
   // removing
   Logger.debug('My: removing subs');
+  for (const subId of subsToRemove) {
+    if (!myGlob.context.subscriptions.some((sub) => subId === getMyId(sub))) {
+      const message = `My remove: sub '${subId}' is missing`;
+      Logger.error(message);
+      void vscode.window.showErrorMessage(message);
+    }
+  }
   if (subscriptions.length - ignoreMh !== 78) {
-    void vscode.window.showErrorMessage(`My: subs are ${subscriptions.length}, not 78`);
+    void vscode.window.showErrorMessage(`My remove: subs are ${subscriptions.length}, not 78`);
   }
   const indexesToRemove: number[] = [];
   for (const [i, sub] of subscriptions.entries()) {
