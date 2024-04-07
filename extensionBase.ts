@@ -146,7 +146,6 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
   );
 
   registerEventListener(context, vscode.workspace.onDidChangeTextDocument, async (event) => {
-    return;
     if (event.document.uri.scheme === 'output') {
       // Without this, we'll get an infinite logging loop
       return;
@@ -195,7 +194,6 @@ export async function activate(context: vscode.ExtensionContext, handleLocal: bo
 
     const mh = ModeHandlerMap.get(event.document.uri);
     if (mh) {
-      // @ts-expect-error unreachable code
       contentChangeHandler(mh);
     }
   });
