@@ -409,6 +409,11 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
   }
 
   public async handleKeyEvent(key: string): Promise<void> {
+    if (this.vimState.currentMode === Mode.Insert && key.toLowerCase().startsWith('<c-')) {
+      // ignore <c-...> insert mappings, otherwise <c-r><esc> sequence triggers re-adds subs
+      Logger.debug(`My: ignoring ${key}`);
+      return;
+    }
     if (key === '<Esc>' && this.vimState.currentMode === Mode.Insert) {
       this.selectionsChanged.ourSelections.splice(0, Infinity); // needed to avoid erratical jumps after leaving insert and moving
       this.syncCursors();
