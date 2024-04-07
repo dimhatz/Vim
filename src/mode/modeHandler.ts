@@ -409,7 +409,12 @@ export class ModeHandler implements vscode.Disposable, IModeHandler {
   }
 
   public async handleKeyEvent(key: string): Promise<void> {
-    if (this.vimState.currentMode === Mode.Insert && key.toLowerCase().startsWith('<c-')) {
+    if (
+      this.vimState.currentMode === Mode.Insert &&
+      key.toLowerCase().startsWith('<c-') &&
+      //  '<C-[>' triggers our <C-s>
+      key !== '<C-[>'
+    ) {
       // ignore <c-...> insert mappings, otherwise <c-r><esc> sequence triggers re-adds subs
       Logger.debug(`My: ignoring ${key}`);
       return;
